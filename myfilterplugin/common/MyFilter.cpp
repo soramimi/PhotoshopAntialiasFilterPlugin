@@ -1,6 +1,9 @@
+#include "Image.h"
+#include "ImageView.h"
 #include "PIDefines.h"
 #include "PIFilter.h"
 #include "PITypes.h"
+#include "antialias.h"
 #include <cstdint>
 
 namespace {
@@ -110,117 +113,20 @@ static int16 transparency_plane_count(FilterRecordPtr const filterRecord)
 	return filterRecord->inTransparencyMask;
 }
 
-static uint8 invert_value_8(uint8 value)
+static uint8 antialias_value_8(uint8 value)
 {
 	return static_cast<uint8>(255 - value);
 }
 
-static uint16 invert_value_16(uint16 value)
+static uint16 antialias_value_16(uint16 value)
 {
 	return static_cast<uint16>(65535U - value);
 }
 
-static float invert_value_32(float value)
+static float antialias_value_32(float value)
 {
 	return 1.0f - value;
 }
-
-class ImageView { // Inspired by QImage
-public:
-	enum Format {
-		Format_Grayscale8,
-		Format_Grayscale16,
-		Format_Grayscale32,
-		Format_GrayscaleA8,
-		Format_GrayscaleA16,
-		Format_GrayscaleA32,
-		Format_RGB24,
-		Format_RGB48,
-		Format_RGB96,
-		Format_RGBA32,
-		Format_RGBA64,
-		Format_RGBA128,
-	};
-
-private:
-	uint8_t *data_;
-	Format format_;
-	int width_;
-	int height_;
-	int bytesPerLine_;
-
-public:
-	ImageView(uint8_t *data, int width, int height, Format format, int bytesPerLine = 0)
-		: data_(data)
-		, width_(width)
-		, height_(height)
-		, format_(format)
-		, bytesPerLine_(bytesPerLine != 0 ? bytesPerLine : (width * bytesPerPixel()))
-	{
-	}
-	int width() const
-	{
-		return width_;
-	}
-	int height() const
-	{
-		return height_;
-	}
-	Format format() const
-	{
-		return format_;
-	}
-	int bytesPerPixel() const
-	{
-		switch (format_) {
-		case Format_Grayscale8:
-			return 1;
-		case Format_Grayscale16:
-			return 2;
-		case Format_Grayscale32:
-			return 4;
-		case Format_GrayscaleA8:
-			return 2;
-		case Format_GrayscaleA16:
-			return 4;
-		case Format_GrayscaleA32:
-			return 8;
-		case Format_RGB24:
-			return 3;
-		case Format_RGB48:
-			return 6;
-		case Format_RGB96:
-			return 12;
-		case Format_RGBA32:
-			return 4;
-		case Format_RGBA64:
-			return 8;
-		case Format_RGBA128:
-			return 16;
-		}
-		return 0;
-	}
-	int bytesPerLine() const
-	{
-		return bytesPerLine_;
-	}
-	uint8_t *bits()
-	{
-		return data_;
-	}
-	uint8_t const *bits() const
-	{
-		return data_;
-	}
-	uint8_t *scanLine(int y)
-	{
-		return data_ + (y * bytesPerLine_);
-	}
-	uint8_t const *scanLine(int y) const
-	{
-		return data_ + (y * bytesPerLine_);
-	}
-};
 
 static ImageView::Format grayscale_format_for_depth(int32 depth)
 {
@@ -270,7 +176,414 @@ static ImageView::Format rgba_format_for_depth(int32 depth)
 	}
 }
 
-static void invert_grayscale_plane(
+euclase::Image convertToGrayscale8(ImageView const &source)
+{
+	euclase::Image ret(source.width(), source.height(), euclase::Image::Format_U8_Grayscale);
+	auto const to8From16 = [](uint16 value) -> uint8_t {
+		return static_cast<uint8_t>((value + 128U) / 257U);
+	};
+	auto const to8FromFloat = [](float value) -> uint8_t {
+		return static_cast<uint8_t>(euclase::clamp_f32(value) * 255.0f + 0.5f);
+	};
+
+	for (int y = 0; y < source.height(); ++y) {
+		uint8_t *outLine = ret.scanLine(y);
+		switch (source.format()) {
+		case ImageView::Format_Grayscale8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = inLine[x];
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = to8From16(inLine[x]);
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = to8FromFloat(inLine[x]);
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = inLine[x * 2];
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = to8From16(inLine[x * 2]);
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				outLine[x] = to8FromFloat(inLine[x * 2]);
+			}
+			break;
+		}
+		case ImageView::Format_RGB24: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 3;
+				outLine[x] = static_cast<uint8_t>(euclase::gray(inLine[base], inLine[base + 1], inLine[base + 2]));
+			}
+			break;
+		}
+		case ImageView::Format_RGB48: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 3;
+				outLine[x] = static_cast<uint8_t>(euclase::gray(to8From16(inLine[base]), to8From16(inLine[base + 1]), to8From16(inLine[base + 2])));
+			}
+			break;
+		}
+		case ImageView::Format_RGB96: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 3;
+				outLine[x] = to8FromFloat(euclase::grayf(inLine[base], inLine[base + 1], inLine[base + 2]));
+			}
+			break;
+		}
+		case ImageView::Format_RGBA32: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[x] = static_cast<uint8_t>(euclase::gray(inLine[base], inLine[base + 1], inLine[base + 2]));
+			}
+			break;
+		}
+		case ImageView::Format_RGBA64: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[x] = static_cast<uint8_t>(euclase::gray(to8From16(inLine[base]), to8From16(inLine[base + 1]), to8From16(inLine[base + 2])));
+			}
+			break;
+		}
+		case ImageView::Format_RGBA128: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[x] = to8FromFloat(euclase::grayf(inLine[base], inLine[base + 1], inLine[base + 2]));
+			}
+			break;
+		}}
+	}
+
+	return ret;
+}
+
+euclase::Image convertToGrayscale8A(ImageView const &source)
+{
+	euclase::Image ret(source.width(), source.height(), euclase::Image::Format_U8_GrayscaleA);
+	auto const to8From16 = [](uint16 value) -> uint8_t {
+		return static_cast<uint8_t>((value + 128U) / 257U);
+	};
+	auto const to8FromFloat = [](float value) -> uint8_t {
+		return static_cast<uint8_t>(euclase::clamp_f32(value) * 255.0f + 0.5f);
+	};
+
+	for (int y = 0; y < source.height(); ++y) {
+		uint8_t *outLine = ret.scanLine(y);
+		switch (source.format()) {
+		case ImageView::Format_Grayscale8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				uint8_t const v = inLine[x];
+				outLine[base] = v;
+				outLine[base + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				outLine[base] = to8From16(inLine[x]);
+				outLine[base + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				outLine[base] = to8FromFloat(inLine[x]);
+				outLine[base + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 2;
+				int const outBase = x * 2;
+				outLine[outBase] = inLine[inBase];
+				outLine[outBase + 1] = inLine[inBase + 1];
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 2;
+				int const outBase = x * 2;
+				outLine[outBase] = to8From16(inLine[inBase]);
+				outLine[outBase + 1] = to8From16(inLine[inBase + 1]);
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 2;
+				int const outBase = x * 2;
+				outLine[outBase] = to8FromFloat(inLine[inBase]);
+				outLine[outBase + 1] = to8FromFloat(inLine[inBase + 1]);
+			}
+			break;
+		}
+		case ImageView::Format_RGB24: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 2;
+				outLine[outBase] = static_cast<uint8_t>(euclase::gray(inLine[inBase], inLine[inBase + 1], inLine[inBase + 2]));
+				outLine[outBase + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGB48: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 2;
+				outLine[outBase] = static_cast<uint8_t>(euclase::gray(to8From16(inLine[inBase]), to8From16(inLine[inBase + 1]), to8From16(inLine[inBase + 2])));
+				outLine[outBase + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGB96: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 2;
+				outLine[outBase] = to8FromFloat(euclase::grayf(inLine[inBase], inLine[inBase + 1], inLine[inBase + 2]));
+				outLine[outBase + 1] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGBA32: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 4;
+				int const outBase = x * 2;
+				outLine[outBase] = static_cast<uint8_t>(euclase::gray(inLine[inBase], inLine[inBase + 1], inLine[inBase + 2]));
+				outLine[outBase + 1] = inLine[inBase + 3];
+			}
+			break;
+		}
+		case ImageView::Format_RGBA64: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 4;
+				int const outBase = x * 2;
+				outLine[outBase] = static_cast<uint8_t>(euclase::gray(to8From16(inLine[inBase]), to8From16(inLine[inBase + 1]), to8From16(inLine[inBase + 2])));
+				outLine[outBase + 1] = to8From16(inLine[inBase + 3]);
+			}
+			break;
+		}
+		case ImageView::Format_RGBA128: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 4;
+				int const outBase = x * 2;
+				outLine[outBase] = to8FromFloat(euclase::grayf(inLine[inBase], inLine[inBase + 1], inLine[inBase + 2]));
+				outLine[outBase + 1] = to8FromFloat(inLine[inBase + 3]);
+			}
+			break;
+		}
+		}
+	}
+
+	return ret;
+}
+
+euclase::Image convertToRGBA32(ImageView const &source)
+{
+	euclase::Image ret(source.width(), source.height(), euclase::Image::Format_U8_RGBA);
+	auto const to8From16 = [](uint16 value) -> uint8_t {
+		return static_cast<uint8_t>((value + 128U) / 257U);
+	};
+	auto const to8FromFloat = [](float value) -> uint8_t {
+		return static_cast<uint8_t>(euclase::clamp_f32(value) * 255.0f + 0.5f);
+	};
+
+	for (int y = 0; y < source.height(); ++y) {
+		uint8_t *outLine = ret.scanLine(y);
+		switch (source.format()) {
+		case ImageView::Format_Grayscale8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				uint8_t const v = inLine[x];
+				int const base = x * 4;
+				outLine[base] = v;
+				outLine[base + 1] = v;
+				outLine[base + 2] = v;
+				outLine[base + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				uint8_t const v = to8From16(inLine[x]);
+				int const base = x * 4;
+				outLine[base] = v;
+				outLine[base + 1] = v;
+				outLine[base + 2] = v;
+				outLine[base + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_Grayscale32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				uint8_t const v = to8FromFloat(inLine[x]);
+				int const base = x * 4;
+				outLine[base] = v;
+				outLine[base + 1] = v;
+				outLine[base + 2] = v;
+				outLine[base + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA8: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				int const outBase = x * 4;
+				uint8_t const v = inLine[base];
+				outLine[outBase] = v;
+				outLine[outBase + 1] = v;
+				outLine[outBase + 2] = v;
+				outLine[outBase + 3] = inLine[base + 1];
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA16: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				int const outBase = x * 4;
+				uint8_t const v = to8From16(inLine[base]);
+				outLine[outBase] = v;
+				outLine[outBase + 1] = v;
+				outLine[outBase + 2] = v;
+				outLine[outBase + 3] = to8From16(inLine[base + 1]);
+			}
+			break;
+		}
+		case ImageView::Format_GrayscaleA32: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 2;
+				int const outBase = x * 4;
+				uint8_t const v = to8FromFloat(inLine[base]);
+				outLine[outBase] = v;
+				outLine[outBase + 1] = v;
+				outLine[outBase + 2] = v;
+				outLine[outBase + 3] = to8FromFloat(inLine[base + 1]);
+			}
+			break;
+		}
+		case ImageView::Format_RGB24: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 4;
+				outLine[outBase] = inLine[inBase];
+				outLine[outBase + 1] = inLine[inBase + 1];
+				outLine[outBase + 2] = inLine[inBase + 2];
+				outLine[outBase + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGB48: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 4;
+				outLine[outBase] = to8From16(inLine[inBase]);
+				outLine[outBase + 1] = to8From16(inLine[inBase + 1]);
+				outLine[outBase + 2] = to8From16(inLine[inBase + 2]);
+				outLine[outBase + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGB96: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const inBase = x * 3;
+				int const outBase = x * 4;
+				outLine[outBase] = to8FromFloat(inLine[inBase]);
+				outLine[outBase + 1] = to8FromFloat(inLine[inBase + 1]);
+				outLine[outBase + 2] = to8FromFloat(inLine[inBase + 2]);
+				outLine[outBase + 3] = 255;
+			}
+			break;
+		}
+		case ImageView::Format_RGBA32: {
+			uint8_t const *inLine = source.scanLine(y);
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[base] = inLine[base];
+				outLine[base + 1] = inLine[base + 1];
+				outLine[base + 2] = inLine[base + 2];
+				outLine[base + 3] = inLine[base + 3];
+			}
+			break;
+		}
+		case ImageView::Format_RGBA64: {
+			uint16_t const *inLine = reinterpret_cast<uint16_t const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[base] = to8From16(inLine[base]);
+				outLine[base + 1] = to8From16(inLine[base + 1]);
+				outLine[base + 2] = to8From16(inLine[base + 2]);
+				outLine[base + 3] = to8From16(inLine[base + 3]);
+			}
+			break;
+		}
+		case ImageView::Format_RGBA128: {
+			float const *inLine = reinterpret_cast<float const *>(source.scanLine(y));
+			for (int x = 0; x < source.width(); ++x) {
+				int const base = x * 4;
+				outLine[base] = to8FromFloat(inLine[base]);
+				outLine[base + 1] = to8FromFloat(inLine[base + 1]);
+				outLine[base + 2] = to8FromFloat(inLine[base + 2]);
+				outLine[base + 3] = to8FromFloat(inLine[base + 3]);
+			}
+			break;
+		}}
+	}
+
+	return ret;
+}
+
+static void antialias_grayscale_plane(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -292,31 +605,36 @@ static void invert_grayscale_plane(
 		grayscale_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToGrayscale8(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_Grayscale8:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_8(inLine[x]);
+				outLine[x] = inLine[x];
 			}
 		}
 		break;
 	case ImageView::Format_Grayscale16:
+		intermediate = intermediate.convertToFormat(euclase::Image::Format_U8_Grayscale);
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_16(inLine[x]);
+				outLine[x] = static_cast<uint16>(inLine[x]) * 257U;
 			}
 		}
 		break;
 	case ImageView::Format_Grayscale32:
+		intermediate = intermediate.convertToFormat(euclase::Image::Format_F16_Grayscale);
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float const *inLine = reinterpret_cast<float const *>(intermediate.scanLine(y));
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_32(inLine[x]);
+				outLine[x] = inLine[x];
 			}
 		}
 		break;
@@ -325,7 +643,7 @@ static void invert_grayscale_plane(
 	}
 }
 
-static void invert_grayscale_alpha_packed(
+static void antialias_grayscale_alpha_packed(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -347,14 +665,17 @@ static void invert_grayscale_alpha_packed(
 		grayscale_alpha_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToGrayscale8A(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_GrayscaleA8:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 2;
-				outLine[base] = invert_value_8(inLine[base]);
+				outLine[base] = inLine[base];
 				outLine[base + 1] = inLine[base + 1];
 			}
 		}
@@ -362,24 +683,24 @@ static void invert_grayscale_alpha_packed(
 
 	case ImageView::Format_GrayscaleA16:
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 2;
-				outLine[base] = invert_value_16(inLine[base]);
-				outLine[base + 1] = inLine[base + 1];
+				outLine[base] = static_cast<uint16>(inLine[base]) * 257U;
+				outLine[base + 1] = static_cast<uint16>(inLine[base + 1]) * 257U;
 			}
 		}
 		break;
 
 	case ImageView::Format_GrayscaleA32:
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 2;
-				outLine[base] = invert_value_32(inLine[base]);
-				outLine[base + 1] = inLine[base + 1];
+				outLine[base] = inLine[base] / 255.0f;
+				outLine[base + 1] = inLine[base + 1] / 255.0f;
 			}
 		}
 		break;
@@ -389,7 +710,7 @@ static void invert_grayscale_alpha_packed(
 	}
 }
 
-static void invert_rgb_packed(
+static void antialias_rgb_packed(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -411,42 +732,45 @@ static void invert_rgb_packed(
 		rgb_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToRGBA32(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_RGB24:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
-				int32 const base = x * 3;
-				outLine[base] = invert_value_8(inLine[base]);
-				outLine[base + 1] = invert_value_8(inLine[base + 1]);
-				outLine[base + 2] = invert_value_8(inLine[base + 2]);
+				int32 const base = x * 4;
+				outLine[x * 3] = inLine[base];
+				outLine[x * 3 + 1] = inLine[base + 1];
+				outLine[x * 3 + 2] = inLine[base + 2];
 			}
 		}
 		break;
 
 	case ImageView::Format_RGB48:
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				int32 const base = x * 3;
-				outLine[base] = invert_value_16(inLine[base]);
-				outLine[base + 1] = invert_value_16(inLine[base + 1]);
-				outLine[base + 2] = invert_value_16(inLine[base + 2]);
+				int32 const base = x * 4;
+				outLine[x * 3] = static_cast<uint16>(inLine[base]) * 257U;
+				outLine[x * 3 + 1] = static_cast<uint16>(inLine[base + 1]) * 257U;
+				outLine[x * 3 + 2] = static_cast<uint16>(inLine[base + 2]) * 257U;
 			}
 		}
 		break;
 
 	case ImageView::Format_RGB96:
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				int32 const base = x * 3;
-				outLine[base] = invert_value_32(inLine[base]);
-				outLine[base + 1] = invert_value_32(inLine[base + 1]);
-				outLine[base + 2] = invert_value_32(inLine[base + 2]);
+				int32 const base = x * 4;
+				outLine[x * 3] = inLine[base] / 255.0f;
+				outLine[x * 3 + 1] = inLine[base + 1] / 255.0f;
+				outLine[x * 3 + 2] = inLine[base + 2] / 255.0f;
 			}
 		}
 		break;
@@ -456,7 +780,7 @@ static void invert_rgb_packed(
 	}
 }
 
-static void invert_rgba_packed(
+static void antialias_rgba_packed(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -478,16 +802,19 @@ static void invert_rgba_packed(
 		rgba_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToRGBA32(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_RGBA32:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 4;
-				outLine[base] = invert_value_8(inLine[base]);
-				outLine[base + 1] = invert_value_8(inLine[base + 1]);
-				outLine[base + 2] = invert_value_8(inLine[base + 2]);
+				outLine[base] = inLine[base];
+				outLine[base + 1] = inLine[base + 1];
+				outLine[base + 2] = inLine[base + 2];
 				outLine[base + 3] = inLine[base + 3];
 			}
 		}
@@ -495,28 +822,28 @@ static void invert_rgba_packed(
 
 	case ImageView::Format_RGBA64:
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 4;
-				outLine[base] = invert_value_16(inLine[base]);
-				outLine[base + 1] = invert_value_16(inLine[base + 1]);
-				outLine[base + 2] = invert_value_16(inLine[base + 2]);
-				outLine[base + 3] = inLine[base + 3];
+				outLine[base] = static_cast<uint16>(inLine[base]) * 257U;
+				outLine[base + 1] = static_cast<uint16>(inLine[base + 1]) * 257U;
+				outLine[base + 2] = static_cast<uint16>(inLine[base + 2]) * 257U;
+				outLine[base + 3] = static_cast<uint16>(inLine[base + 3]) * 257U;
 			}
 		}
 		break;
 
 	case ImageView::Format_RGBA128:
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
 				int32 const base = x * 4;
-				outLine[base] = invert_value_32(inLine[base]);
-				outLine[base + 1] = invert_value_32(inLine[base + 1]);
-				outLine[base + 2] = invert_value_32(inLine[base + 2]);
-				outLine[base + 3] = inLine[base + 3];
+				outLine[base] = inLine[base] / 255.0f;
+				outLine[base + 1] = inLine[base + 1] / 255.0f;
+				outLine[base + 2] = inLine[base + 2] / 255.0f;
+				outLine[base + 3] = inLine[base + 3] / 255.0f;
 			}
 		}
 		break;
@@ -526,7 +853,7 @@ static void invert_rgba_packed(
 	}
 }
 
-static void invert_rgb_plane_fallback(
+static void antialias_rgb_plane_fallback(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -548,33 +875,36 @@ static void invert_rgb_plane_fallback(
 		grayscale_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToGrayscale8(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_Grayscale8:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_8(inLine[x]);
+				outLine[x] = inLine[x];
 			}
 		}
 		break;
 
 	case ImageView::Format_Grayscale16:
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_16(inLine[x]);
+				outLine[x] = static_cast<uint16>(inLine[x]) * 257U;
 			}
 		}
 		break;
 
 	case ImageView::Format_Grayscale32:
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = invert_value_32(inLine[x]);
+				outLine[x] = inLine[x] / 255.0f;
 			}
 		}
 		break;
@@ -584,7 +914,7 @@ static void invert_rgb_plane_fallback(
 	}
 }
 
-static void copy_alpha_plane_fallback(
+static void antialias_copy_alpha_plane_fallback(
 	void const *inData,
 	void *outData,
 	int32 outRowBytes,
@@ -606,10 +936,13 @@ static void copy_alpha_plane_fallback(
 		grayscale_format_for_depth(depth),
 		outRowBytes);
 
+	euclase::Image intermediate = convertToGrayscale8(inputImage);
+	filter_antialias(&intermediate);
+
 	switch (inputImage.format()) {
 	case ImageView::Format_Grayscale8:
 		for (int32 y = 0; y < height; ++y) {
-			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint8_t *outLine = outputImage.scanLine(y);
 			for (int32 x = 0; x < width; ++x) {
 				outLine[x] = inLine[x];
@@ -619,20 +952,20 @@ static void copy_alpha_plane_fallback(
 
 	case ImageView::Format_Grayscale16:
 		for (int32 y = 0; y < height; ++y) {
-			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = inLine[x];
+				outLine[x] = static_cast<uint16>(inLine[x]) * 257U;
 			}
 		}
 		break;
 
 	case ImageView::Format_Grayscale32:
 		for (int32 y = 0; y < height; ++y) {
-			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			uint8_t const *inLine = intermediate.scanLine(y);
 			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
 			for (int32 x = 0; x < width; ++x) {
-				outLine[x] = inLine[x];
+				outLine[x] = inLine[x] / 255.0f;
 			}
 		}
 		break;
@@ -661,7 +994,7 @@ static int16 process_grayscale_filter(FilterRecordPtr filterRecord, Rect32 const
 			return advanceResult;
 		}
 
-		invert_grayscale_alpha_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+		antialias_grayscale_alpha_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 
 		if (filterRecord->progressProc != NULL) {
 			filterRecord->progressProc(1, 1);
@@ -690,10 +1023,10 @@ static int16 process_grayscale_filter(FilterRecordPtr filterRecord, Rect32 const
 			return advanceResult;
 		}
 
-		if (plane == 0) {
-			invert_grayscale_plane(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+           if (plane == 0) {
+				antialias_grayscale_plane(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		} else {
-			copy_alpha_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+             antialias_copy_alpha_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		}
 
 		if (filterRecord->progressProc != NULL) {
@@ -728,9 +1061,9 @@ static int16 process_rgb_filter(FilterRecordPtr filterRecord, Rect32 const &filt
 		}
 
 		if (alphaPlanes != 0) {
-			invert_rgba_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+            antialias_rgba_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		} else {
-			invert_rgb_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+         antialias_rgb_packed(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		}
 
 		if (filterRecord->progressProc != NULL) {
@@ -761,9 +1094,9 @@ static int16 process_rgb_filter(FilterRecordPtr filterRecord, Rect32 const &filt
 		}
 
 		if (plane < 3) {
-			invert_rgb_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+         antialias_rgb_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		} else {
-			copy_alpha_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
+         antialias_copy_alpha_plane_fallback(filterRecord->inData, filterRecord->outData, filterRecord->outRowBytes, filterRect, filterRecord->depth);
 		}
 
 		if (filterRecord->progressProc != NULL) {
@@ -783,6 +1116,10 @@ static int16 process_filter(FilterRecordPtr filterRecord)
 	int16 const colorPlanes = supported_color_planes(filterRecord->imageMode);
 
 	if (colorPlanes == 0) {
+		return filterBadMode;
+	}
+
+	if (filterRecord->depth == 32) {
 		return filterBadMode;
 	}
 

@@ -81,7 +81,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>..\..\pluginsdk\samplecode\common\includes;..\..\pluginsdk\photoshopapi\photoshop;..\..\pluginsdk\photoshopapi\pica_sp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>ISOLATION_AWARE_ENABLED=1;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_SCL_SECURE_NO_DEPRECATE;WIN32=1;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ISOLATION_AWARE_ENABLED=1;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_SCL_SECURE_NO_DEPRECATE;WIN32=1;_WINDOWS;%(PreprocessorDefinitions);NOMINMAX</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
@@ -111,10 +111,18 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\common\antialias.cpp" />
+    <ClCompile Include="..\common\fp\fp.cpp" />
+    <ClCompile Include="..\common\fp\tables.cpp" />
+    <ClCompile Include="..\common\Image.cpp" />
     <ClCompile Include="..\common\MyFilter.cpp" />
-    <ClCompile Include="common\MyFilter.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\common\antialias.h" />
+    <ClInclude Include="..\common\fp\f16c.h" />
+    <ClInclude Include="..\common\fp\fp.h" />
+    <ClInclude Include="..\common\Image.h" />
+    <ClInclude Include="..\common\ImageView.h" />
     <ClInclude Include="MyFilter-sym.h" />
   </ItemGroup>
   <ItemGroup>
@@ -122,6 +130,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\common\PiPLs.json" />
+    <None Include="README_ja.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
