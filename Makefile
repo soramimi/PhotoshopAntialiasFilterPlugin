@@ -11,4 +11,4 @@ clean:
     if exist myfilterplugin\build rmdir /s /q myfilterplugin\build
 
 install: # need admin privileges
-    copy "myfilterplugin\build\Release\MyFilter.8bf" "C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\"
+    copy "myfilterplugin\build\Release\Antialias.8bf" "C:\Program Files\Adobe\Adobe Photoshop 2026\Plug-ins\"
