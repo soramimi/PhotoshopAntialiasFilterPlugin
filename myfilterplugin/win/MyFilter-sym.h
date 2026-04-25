@@ -1,0 +1,1 @@
+/* Resource symbols are intentionally minimal for this plug-in. */

@@ -1,0 +1,7 @@
+#include "MyFilter-sym.h"
+
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "windows.h"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+JSON_PIPL JSON "..\\common\\PiPLs.json"
