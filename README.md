@@ -1,5 +1,7 @@
 # Antialias
 
+[日本語](README_ja.md)
+
 Antialias is a Windows Adobe Photoshop filter plug-in built with the Adobe Photoshop SDK.
 
 ## What It Does
