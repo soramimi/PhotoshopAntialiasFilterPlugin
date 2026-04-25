@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.5.11716.220 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MyFilter", "MyFilter.vcxproj", "{E6B836D4-4109-42CC-83A0-CB03799D58B0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E6B836D4-4109-42CC-83A0-CB03799D58B0}.Debug|x64.ActiveCfg = Debug|x64
+		{E6B836D4-4109-42CC-83A0-CB03799D58B0}.Debug|x64.Build.0 = Debug|x64
+		{E6B836D4-4109-42CC-83A0-CB03799D58B0}.Release|x64.ActiveCfg = Release|x64
+		{E6B836D4-4109-42CC-83A0-CB03799D58B0}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C9241295-6A21-4686-B940-17C045F548CC}
+	EndGlobalSection
+EndGlobal

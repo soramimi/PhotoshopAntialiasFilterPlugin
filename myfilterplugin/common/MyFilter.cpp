@@ -1,6 +1,7 @@
 #include "PIDefines.h"
 #include "PIFilter.h"
 #include "PITypes.h"
+#include <cstdint>
 
 namespace {
 struct Rect32 {
@@ -124,6 +125,151 @@ static float invert_value_32(float value)
 	return 1.0f - value;
 }
 
+class ImageView { // Inspired by QImage
+public:
+	enum Format {
+		Format_Grayscale8,
+		Format_Grayscale16,
+		Format_Grayscale32,
+		Format_GrayscaleA8,
+		Format_GrayscaleA16,
+		Format_GrayscaleA32,
+		Format_RGB24,
+		Format_RGB48,
+		Format_RGB96,
+		Format_RGBA32,
+		Format_RGBA64,
+		Format_RGBA128,
+	};
+
+private:
+	uint8_t *data_;
+	Format format_;
+	int width_;
+	int height_;
+	int bytesPerLine_;
+
+public:
+	ImageView(uint8_t *data, int width, int height, Format format, int bytesPerLine = 0)
+		: data_(data)
+		, width_(width)
+		, height_(height)
+		, format_(format)
+		, bytesPerLine_(bytesPerLine != 0 ? bytesPerLine : (width * bytesPerPixel()))
+	{
+	}
+	int width() const
+	{
+		return width_;
+	}
+	int height() const
+	{
+		return height_;
+	}
+	Format format() const
+	{
+		return format_;
+	}
+	int bytesPerPixel() const
+	{
+		switch (format_) {
+		case Format_Grayscale8:
+			return 1;
+		case Format_Grayscale16:
+			return 2;
+		case Format_Grayscale32:
+			return 4;
+		case Format_GrayscaleA8:
+			return 2;
+		case Format_GrayscaleA16:
+			return 4;
+		case Format_GrayscaleA32:
+			return 8;
+		case Format_RGB24:
+			return 3;
+		case Format_RGB48:
+			return 6;
+		case Format_RGB96:
+			return 12;
+		case Format_RGBA32:
+			return 4;
+		case Format_RGBA64:
+			return 8;
+		case Format_RGBA128:
+			return 16;
+		}
+		return 0;
+	}
+	int bytesPerLine() const
+	{
+		return bytesPerLine_;
+	}
+	uint8_t *bits()
+	{
+		return data_;
+	}
+	uint8_t const *bits() const
+	{
+		return data_;
+	}
+	uint8_t *scanLine(int y)
+	{
+		return data_ + (y * bytesPerLine_);
+	}
+	uint8_t const *scanLine(int y) const
+	{
+		return data_ + (y * bytesPerLine_);
+	}
+};
+
+static ImageView::Format grayscale_format_for_depth(int32 depth)
+{
+	switch (depth) {
+	case 8:
+		return ImageView::Format_Grayscale8;
+	case 16:
+		return ImageView::Format_Grayscale16;
+	default:
+		return ImageView::Format_Grayscale32;
+	}
+}
+
+static ImageView::Format grayscale_alpha_format_for_depth(int32 depth)
+{
+	switch (depth) {
+	case 8:
+		return ImageView::Format_GrayscaleA8;
+	case 16:
+		return ImageView::Format_GrayscaleA16;
+	default:
+		return ImageView::Format_GrayscaleA32;
+	}
+}
+
+static ImageView::Format rgb_format_for_depth(int32 depth)
+{
+	switch (depth) {
+	case 8:
+		return ImageView::Format_RGB24;
+	case 16:
+		return ImageView::Format_RGB48;
+	default:
+		return ImageView::Format_RGB96;
+	}
+}
+
+static ImageView::Format rgba_format_for_depth(int32 depth)
+{
+	switch (depth) {
+	case 8:
+		return ImageView::Format_RGBA32;
+	case 16:
+		return ImageView::Format_RGBA64;
+	default:
+		return ImageView::Format_RGBA128;
+	}
+}
+
 static void invert_grayscale_plane(
 	void const *inData,
 	void *outData,
@@ -133,30 +279,49 @@ static void invert_grayscale_plane(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			switch (depth) {
-			case 8:
-				out8[x] = invert_value_8(in8[x]);
-				break;
-
-			case 16:
-				out16[x] = invert_value_16(in16[x]);
-				break;
-
-			case 32:
-				out32[x] = invert_value_32(in32[x]);
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_Grayscale8:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_8(inLine[x]);
 			}
 		}
+		break;
+	case ImageView::Format_Grayscale16:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_16(inLine[x]);
+			}
+		}
+		break;
+	case ImageView::Format_Grayscale32:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_32(inLine[x]);
+			}
+		}
+		break;
+	default:
+		break;
 	}
 }
 
@@ -169,35 +334,58 @@ static void invert_grayscale_alpha_packed(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		grayscale_alpha_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		grayscale_alpha_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			int32 const base = x * 2;
-
-			switch (depth) {
-			case 8:
-				out8[base] = invert_value_8(in8[base]);
-				out8[base + 1] = in8[base + 1];
-				break;
-
-			case 16:
-				out16[base] = invert_value_16(in16[base]);
-				out16[base + 1] = in16[base + 1];
-				break;
-
-			case 32:
-				out32[base] = invert_value_32(in32[base]);
-				out32[base + 1] = in32[base + 1];
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_GrayscaleA8:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 2;
+				outLine[base] = invert_value_8(inLine[base]);
+				outLine[base + 1] = inLine[base + 1];
 			}
 		}
+		break;
+
+	case ImageView::Format_GrayscaleA16:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 2;
+				outLine[base] = invert_value_16(inLine[base]);
+				outLine[base + 1] = inLine[base + 1];
+			}
+		}
+		break;
+
+	case ImageView::Format_GrayscaleA32:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 2;
+				outLine[base] = invert_value_32(inLine[base]);
+				outLine[base + 1] = inLine[base + 1];
+			}
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 
@@ -210,38 +398,61 @@ static void invert_rgb_packed(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		rgb_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		rgb_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			int32 const base = x * 3;
-
-			switch (depth) {
-			case 8:
-				out8[base] = invert_value_8(in8[base]);
-				out8[base + 1] = invert_value_8(in8[base + 1]);
-				out8[base + 2] = invert_value_8(in8[base + 2]);
-				break;
-
-			case 16:
-				out16[base] = invert_value_16(in16[base]);
-				out16[base + 1] = invert_value_16(in16[base + 1]);
-				out16[base + 2] = invert_value_16(in16[base + 2]);
-				break;
-
-			case 32:
-				out32[base] = invert_value_32(in32[base]);
-				out32[base + 1] = invert_value_32(in32[base + 1]);
-				out32[base + 2] = invert_value_32(in32[base + 2]);
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_RGB24:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 3;
+				outLine[base] = invert_value_8(inLine[base]);
+				outLine[base + 1] = invert_value_8(inLine[base + 1]);
+				outLine[base + 2] = invert_value_8(inLine[base + 2]);
 			}
 		}
+		break;
+
+	case ImageView::Format_RGB48:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 3;
+				outLine[base] = invert_value_16(inLine[base]);
+				outLine[base + 1] = invert_value_16(inLine[base + 1]);
+				outLine[base + 2] = invert_value_16(inLine[base + 2]);
+			}
+		}
+		break;
+
+	case ImageView::Format_RGB96:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 3;
+				outLine[base] = invert_value_32(inLine[base]);
+				outLine[base + 1] = invert_value_32(inLine[base + 1]);
+				outLine[base + 2] = invert_value_32(inLine[base + 2]);
+			}
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 
@@ -254,41 +465,64 @@ static void invert_rgba_packed(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		rgba_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		rgba_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			int32 const base = x * 4;
-
-			switch (depth) {
-			case 8:
-				out8[base] = invert_value_8(in8[base]);
-				out8[base + 1] = invert_value_8(in8[base + 1]);
-				out8[base + 2] = invert_value_8(in8[base + 2]);
-				out8[base + 3] = in8[base + 3];
-				break;
-
-			case 16:
-				out16[base] = invert_value_16(in16[base]);
-				out16[base + 1] = invert_value_16(in16[base + 1]);
-				out16[base + 2] = invert_value_16(in16[base + 2]);
-				out16[base + 3] = in16[base + 3];
-				break;
-
-			case 32:
-				out32[base] = invert_value_32(in32[base]);
-				out32[base + 1] = invert_value_32(in32[base + 1]);
-				out32[base + 2] = invert_value_32(in32[base + 2]);
-				out32[base + 3] = in32[base + 3];
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_RGBA32:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 4;
+				outLine[base] = invert_value_8(inLine[base]);
+				outLine[base + 1] = invert_value_8(inLine[base + 1]);
+				outLine[base + 2] = invert_value_8(inLine[base + 2]);
+				outLine[base + 3] = inLine[base + 3];
 			}
 		}
+		break;
+
+	case ImageView::Format_RGBA64:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 4;
+				outLine[base] = invert_value_16(inLine[base]);
+				outLine[base + 1] = invert_value_16(inLine[base + 1]);
+				outLine[base + 2] = invert_value_16(inLine[base + 2]);
+				outLine[base + 3] = inLine[base + 3];
+			}
+		}
+		break;
+
+	case ImageView::Format_RGBA128:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				int32 const base = x * 4;
+				outLine[base] = invert_value_32(inLine[base]);
+				outLine[base + 1] = invert_value_32(inLine[base + 1]);
+				outLine[base + 2] = invert_value_32(inLine[base + 2]);
+				outLine[base + 3] = inLine[base + 3];
+			}
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 
@@ -301,30 +535,52 @@ static void invert_rgb_plane_fallback(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			switch (depth) {
-			case 8:
-				out8[x] = invert_value_8(in8[x]);
-				break;
-
-			case 16:
-				out16[x] = invert_value_16(in16[x]);
-				break;
-
-			case 32:
-				out32[x] = invert_value_32(in32[x]);
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_Grayscale8:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_8(inLine[x]);
 			}
 		}
+		break;
+
+	case ImageView::Format_Grayscale16:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_16(inLine[x]);
+			}
+		}
+		break;
+
+	case ImageView::Format_Grayscale32:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = invert_value_32(inLine[x]);
+			}
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 
@@ -337,30 +593,52 @@ static void copy_alpha_plane_fallback(
 {
 	int32 const width = rect.right - rect.left;
 	int32 const height = rect.bottom - rect.top;
+	ImageView const inputImage(
+		const_cast<uint8_t *>(static_cast<uint8_t const *>(inData)),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
+	ImageView outputImage(
+		static_cast<uint8_t *>(outData),
+		width,
+		height,
+		grayscale_format_for_depth(depth),
+		outRowBytes);
 
-	for (int32 y = 0; y < height; ++y) {
-		uint8 const *in8 = static_cast<uint8 const *>(inData) + (y * outRowBytes);
-		uint16 const *in16 = reinterpret_cast<uint16 const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		float const *in32 = reinterpret_cast<float const *>(static_cast<uint8 const *>(inData) + (y * outRowBytes));
-		uint8 *out8 = static_cast<uint8 *>(outData) + (y * outRowBytes);
-		uint16 *out16 = reinterpret_cast<uint16 *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-		float *out32 = reinterpret_cast<float *>(static_cast<uint8 *>(outData) + (y * outRowBytes));
-
-		for (int32 x = 0; x < width; ++x) {
-			switch (depth) {
-			case 8:
-				out8[x] = in8[x];
-				break;
-
-			case 16:
-				out16[x] = in16[x];
-				break;
-
-			case 32:
-				out32[x] = in32[x];
-				break;
+	switch (inputImage.format()) {
+	case ImageView::Format_Grayscale8:
+		for (int32 y = 0; y < height; ++y) {
+			uint8_t const *inLine = inputImage.scanLine(y);
+			uint8_t *outLine = outputImage.scanLine(y);
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = inLine[x];
 			}
 		}
+		break;
+
+	case ImageView::Format_Grayscale16:
+		for (int32 y = 0; y < height; ++y) {
+			uint16 const *inLine = reinterpret_cast<uint16 const *>(inputImage.scanLine(y));
+			uint16 *outLine = reinterpret_cast<uint16 *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = inLine[x];
+			}
+		}
+		break;
+
+	case ImageView::Format_Grayscale32:
+		for (int32 y = 0; y < height; ++y) {
+			float const *inLine = reinterpret_cast<float const *>(inputImage.scanLine(y));
+			float *outLine = reinterpret_cast<float *>(outputImage.scanLine(y));
+			for (int32 x = 0; x < width; ++x) {
+				outLine[x] = inLine[x];
+			}
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 
