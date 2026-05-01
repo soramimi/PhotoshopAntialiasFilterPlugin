@@ -6,3 +6,5 @@ license.html
 adobe_photoshop_sdk*.zip
 myfilterplugin/build/
 myfilterplugin/win/.vs/
+myfilterplugin/win/build/
+*.user
