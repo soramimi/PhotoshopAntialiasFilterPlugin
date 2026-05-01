@@ -11,7 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{E6B836D4-4109-42CC-83A0-CB03799D58B0}</ProjectGuid>
+    <ProjectGuid>{707BCE01-748A-4399-B1B0-5D5B90E07F94}</ProjectGuid>
     <RootNamespace>MyFilter</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ProjectName>Antialias</ProjectName>
@@ -113,17 +113,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\common\antialias.cpp" />
+    <ClCompile Include="..\common\euclase.cpp" />
     <ClCompile Include="..\common\fp\fp.cpp" />
     <ClCompile Include="..\common\fp\tables.cpp" />
-    <ClCompile Include="..\common\Image.cpp" />
-    <ClCompile Include="..\common\MyFilter.cpp" />
+    <ClCompile Include="..\common\PhotoshopAntialiasFilter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\antialias.h" />
+    <ClInclude Include="..\common\euclase.h" />
     <ClInclude Include="..\common\fp\f16c.h" />
     <ClInclude Include="..\common\fp\fp.h" />
-    <ClInclude Include="..\common\Image.h" />
-    <ClInclude Include="..\common\ImageView.h" />
     <ClInclude Include="MyFilter-sym.h" />
   </ItemGroup>
   <ItemGroup>

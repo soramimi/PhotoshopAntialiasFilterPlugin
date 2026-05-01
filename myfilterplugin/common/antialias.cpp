@@ -1,5 +1,5 @@
 #include "antialias.h"
-#include "Image.h"
+#include "euclase.h"
 #include <stdint.h>
 #include <functional>
 
@@ -403,28 +403,28 @@ bool filter_antialias(euclase::Image *image)
 		return false;
 	}
 
-	if (image->format() == euclase::Image::Format_U8_Grayscale) {
+	if (image->format() == euclase::ImageFormat::Format_U8_Grayscale) {
 		*image = image->toHost();
 		AntialiasGray8().filter(image);
 		return true;
 	}
 
-	if (image->format() == euclase::Image::Format_U8_GrayscaleA) {
+	if (image->format() == euclase::ImageFormat::Format_U8_GrayscaleA) {
 		*image = image->toHost();
 		AntialiasGray8A().filter(image);
 		return true;
 	}
 
-	if (image->format() == euclase::Image::Format_U8_RGBA) {
+	if (image->format() == euclase::ImageFormat::Format_U8_RGBA) {
 		*image = image->toHost();
 		AntialiasRGB888().filter(image);
 		return true;
 	}
 
-	if (image->format() == euclase::Image::Format_F32_RGBA) {
-		*image = image->convertToFormat(euclase::Image::Format_U8_RGBA);
+	if (image->format() == euclase::ImageFormat::Format_F32_RGBA) {
+		*image = euclase::convertToFormat(*image, euclase::ImageFormat::Format_U8_RGBA);
 		if (filter_antialias(image)) {
-			*image = image->convertToFormat(euclase::Image::Format_F32_RGBA);
+			*image = euclase::convertToFormat(*image, euclase::ImageFormat::Format_F32_RGBA);
 			return true;
 		}
 		return false;

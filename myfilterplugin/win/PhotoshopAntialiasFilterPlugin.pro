@@ -1,6 +1,6 @@
 TEMPLATE = lib
 TARGET = Antialias
-CONFIG += c++17
+CONFIG += dll c++17
 CONFIG -= qt
 
 # Build as DLL with .8bf extension
@@ -8,10 +8,10 @@ QMAKE_EXTENSION_SHLIB = 8bf
 
 # Output directories
 CONFIG(debug, debug|release) {
-    DESTDIR = ../build/Debug
+    DESTDIR = $$PWD/../build/Debug
     OBJECTS_DIR = ../build/obj/Debug
 } else {
-    DESTDIR = ../build/Release
+    DESTDIR = $$PWD/../build/Release
     OBJECTS_DIR = ../build/obj/Release
 }
 
@@ -54,19 +54,18 @@ INCLUDEPATH += ../../pluginsdk/photoshopapi/pica_sp
 
 # Source files
 SOURCES += \
+    ../common/PhotoshopAntialiasFilter.cpp \
     ../common/antialias.cpp \
+    ../common/euclase.cpp \
     ../common/fp/fp.cpp \
-    ../common/fp/tables.cpp \
-    ../common/Image.cpp \
-    ../common/MyFilter.cpp
+    ../common/fp/tables.cpp
 
 # Header files
 HEADERS += \
     ../common/antialias.h \
+    ../common/euclase.h \
     ../common/fp/f16c.h \
     ../common/fp/fp.h \
-    ../common/Image.h \
-    ../common/ImageView.h \
     MyFilter-sym.h
 
 # Resource file
