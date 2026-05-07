@@ -25,9 +25,9 @@ The plug-in does not currently target other Photoshop image modes.
 
 ## Project Layout
 
-- [myfilterplugin/common/MyFilter.cpp](myfilterplugin/common/MyFilter.cpp): Photoshop filter implementation.
+- [myfilterplugin/common/PhotoshopAntialiasFilter.cpp](myfilterplugin/common/PhotoshopAntialiasFilter.cpp): Photoshop filter implementation.
 - [myfilterplugin/common/PiPLs.json](myfilterplugin/common/PiPLs.json): plug-in registration metadata.
-- [myfilterplugin/win/MyFilter.vcxproj](myfilterplugin/win/MyFilter.vcxproj): Visual Studio/MSBuild project for the `.8bf` plug-in.
+- [myfilterplugin/win/PhotoshopAntialiasFilterPlugin.vcxproj](myfilterplugin/win/PhotoshopAntialiasFilterPlugin.vcxproj): Visual Studio/MSBuild project for the `.8bf` plug-in.
 - [Makefile](Makefile): convenience build commands.
 
 ## Build Requirements
