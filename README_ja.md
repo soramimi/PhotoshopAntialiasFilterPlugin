@@ -23,9 +23,9 @@ Antialias は、Adobe Photoshop SDK を使って構築された Windows 向け A
 
 ## プロジェクト構成
 
-- [myfilterplugin/common/MyFilter.cpp](myfilterplugin/common/MyFilter.cpp): Photoshop フィルターの実装
+- [myfilterplugin/common/PhotoshopAntialiasFilter.cpp](myfilterplugin/common/PhotoshopAntialiasFilter.cpp): Photoshop フィルターの実装
 - [myfilterplugin/common/PiPLs.json](myfilterplugin/common/PiPLs.json): プラグイン登録メタデータ
-- [myfilterplugin/win/MyFilter.vcxproj](myfilterplugin/win/MyFilter.vcxproj): `.8bf` プラグイン用の Visual Studio/MSBuild プロジェクト
+- [myfilterplugin/win/PhotoshopAntialiasFilterPlugin.vcxproj](myfilterplugin/win/PhotoshopAntialiasFilterPlugin.vcxproj): `.8bf` プラグイン用の Visual Studio/MSBuild プロジェクト
 - [Makefile](Makefile): ビルド用の補助コマンド
 
 ## ビルド要件
