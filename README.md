@@ -4,6 +4,14 @@
 
 Antialias is a Windows Adobe Photoshop filter plug-in built with the Adobe Photoshop SDK.
 
+### before
+
+![before](https://soramimi.github.io/PhotoshopAntialiasFilterPlugin/before.png)
+
+### after
+
+![after](https://soramimi.github.io/PhotoshopAntialiasFilterPlugin/after.png)
+
 ## What It Does
 
 - Applies an antialiasing filter to the selected pixels of the input image.
