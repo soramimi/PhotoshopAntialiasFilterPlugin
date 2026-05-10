@@ -2,6 +2,14 @@
 
 Antialias は、Adobe Photoshop SDK を使って構築された Windows 向け Adobe Photoshop フィルタープラグインです。
 
+### 適用前
+
+![before](https://soramimi.github.io/PhotoshopAntialiasFilterPlugin/before.png)
+
+### 適用後
+
+![after](https://soramimi.github.io/PhotoshopAntialiasFilterPlugin/after.png)
+
 ## 機能
 
 - 選択した画像のピクセルにアンチエイリアス処理を適用します。
